@@ -2,20 +2,20 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace DbAccess
+namespace DbAccess.Models
 {
     public enum TriggerEvent
     {
         Delete,
         Update,
         Insert
-    } 
+    }
 
     public enum TriggerType
     {
         After,
         Before
-    } 
+    }
 
     public class TriggerSchema
     {

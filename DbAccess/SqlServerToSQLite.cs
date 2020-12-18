@@ -1,4 +1,5 @@
-﻿using log4net;
+﻿using DbAccess.Models;
+using log4net;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -55,7 +56,7 @@ namespace DbAccess
             string sqlitePath, string password, SqlConversionHandler handler,
             SqlTableSelectionHandler selectionHandler,
             FailedViewDefinitionHandler viewFailureHandler,
-            bool createTriggers, bool createViews)
+            bool createTriggers, bool createViews, string schemaName, bool importData)
         {
             // Clear cancelled flag
             _cancelled = false;
@@ -65,7 +66,7 @@ namespace DbAccess
                 try
                 {
                     _isActive = true;
-                    ConvertSqlServerDatabaseToSQLiteFile(sqlServerConnString, sqlitePath, password, handler, selectionHandler, viewFailureHandler, createTriggers, createViews);
+                    ConvertSqlServerDatabaseToSQLiteFile(sqlServerConnString, sqlitePath, password, handler, selectionHandler, viewFailureHandler, createTriggers, createViews, schemaName, importData);
                     _isActive = false;
                     handler(true, true, 100, "Finished converting database");
                 }
@@ -95,20 +96,23 @@ namespace DbAccess
             string sqlConnString, string sqlitePath, string password, SqlConversionHandler handler,
             SqlTableSelectionHandler selectionHandler,
             FailedViewDefinitionHandler viewFailureHandler,
-            bool createTriggers, bool createViews)
+            bool createTriggers, bool createViews, string schemaName, bool importData)
         {
             // Delete the target file if it exists already.
             if (File.Exists(sqlitePath))
                 File.Delete(sqlitePath);
 
             // Read the schema of the SQL Server database into a memory structure
-            DatabaseSchema ds = ReadSqlServerSchema(sqlConnString, handler, selectionHandler);
+            DatabaseSchema ds = ReadSqlServerSchema(sqlConnString, handler, selectionHandler, schemaName);
 
             // Create the SQLite database and apply the schema
             CreateSQLiteDatabase(sqlitePath, ds, password, handler, viewFailureHandler, createViews);
 
             // Copy all rows from SQL Server tables to the newly created SQLite database
-            CopySqlServerRowsToSQLiteDB(sqlConnString, sqlitePath, ds.Tables, password, handler);
+            if (importData)
+            {
+                CopySqlServerRowsToSQLiteDB(sqlConnString, sqlitePath, ds.Tables, password, handler);
+            }
 
             // Add triggers based on foreign key constraints
             if (createTriggers)
@@ -797,8 +801,11 @@ namespace DbAccess
         /// which tables to convert.</param>
         /// <returns>database schema objects for every table/view in the SQL Server database.</returns>
         private static DatabaseSchema ReadSqlServerSchema(string connString, SqlConversionHandler handler,
-            SqlTableSelectionHandler selectionHandler)
+            SqlTableSelectionHandler selectionHandler, string schemaName)
         {
+
+            bool viewsSupported = false;
+
             // First step is to read the names of all tables in the database
             List<TableSchema> tables = new List<TableSchema>();
             using (SqlConnection conn = new SqlConnection(connString))
@@ -809,7 +816,7 @@ namespace DbAccess
                 List<string> tblschema = new List<string>();
 
                 // This command will read the names of all tables in the database
-                SqlCommand cmd = new SqlCommand(@"select * from INFORMATION_SCHEMA.TABLES  where TABLE_TYPE = 'BASE TABLE'", conn);
+                SqlCommand cmd = new SqlCommand($"select * from INFORMATION_SCHEMA.TABLES  where TABLE_TYPE = 'BASE TABLE' and TABLE_SCHEMA = '{schemaName}'", conn);
                 using (SqlDataReader reader = cmd.ExecuteReader())
                 {
                     while (reader.Read())
@@ -854,39 +861,41 @@ namespace DbAccess
 
             // Continue and read all of the views in the database
             List<ViewSchema> views = new List<ViewSchema>();
-            using (SqlConnection conn = new SqlConnection(connString))
+            if (viewsSupported) //TODO: Integrate support for view with support for multiple sql server schemas
             {
-                conn.Open();
-
-                SqlCommand cmd = new SqlCommand(@"SELECT TABLE_NAME, VIEW_DEFINITION  from INFORMATION_SCHEMA.VIEWS", conn);
-                using (SqlDataReader reader = cmd.ExecuteReader())
+                using (SqlConnection conn = new SqlConnection(connString))
                 {
-                    int count = 0;
-                    while (reader.Read())
+                    conn.Open();
+
+                    SqlCommand cmd = new SqlCommand(@"SELECT TABLE_NAME, VIEW_DEFINITION  from INFORMATION_SCHEMA.VIEWS", conn);
+                    using (SqlDataReader reader = cmd.ExecuteReader())
                     {
-                        ViewSchema vs = new ViewSchema();
+                        int count = 0;
+                        while (reader.Read())
+                        {
+                            ViewSchema vs = new ViewSchema();
 
-                        if (reader["TABLE_NAME"] == DBNull.Value)
-                            continue;
-                        if (reader["VIEW_DEFINITION"] == DBNull.Value)
-                            continue;
-                        vs.ViewName = (string)reader["TABLE_NAME"];
-                        vs.ViewSQL = (string)reader["VIEW_DEFINITION"];
+                            if (reader["TABLE_NAME"] == DBNull.Value)
+                                continue;
+                            if (reader["VIEW_DEFINITION"] == DBNull.Value)
+                                continue;
+                            vs.ViewName = (string)reader["TABLE_NAME"];
+                            vs.ViewSQL = (string)reader["VIEW_DEFINITION"];
 
-                        // Remove all ".dbo" strings from the view definition
-                        vs.ViewSQL = removedbo.Replace(vs.ViewSQL, string.Empty);
+                            // Remove all ".dbo" strings from the view definition
+                            vs.ViewSQL = removedbo.Replace(vs.ViewSQL, string.Empty);
 
-                        views.Add(vs);
+                            views.Add(vs);
 
-                        count++;
-                        CheckCancelled();
-                        handler(false, true, 50 + (int)(count * 50.0 / views.Count), "Parsed view " + vs.ViewName);
+                            count++;
+                            CheckCancelled();
+                            handler(false, true, 50 + (int)(count * 50.0 / views.Count), "Parsed view " + vs.ViewName);
 
-                        _log.Debug("parsed view schema for [" + vs.ViewName + "]");
-                    } // while
+                            _log.Debug("parsed view schema for [" + vs.ViewName + "]");
+                        } // while
+                    } // using
                 } // using
-
-            } // using
+            }
 
             DatabaseSchema ds = new DatabaseSchema();
             ds.Tables = tables;
@@ -919,7 +928,7 @@ namespace DbAccess
             SqlCommand cmd = new SqlCommand(@"SELECT COLUMN_NAME,COLUMN_DEFAULT,IS_NULLABLE,DATA_TYPE, " +
                 @" (columnproperty(object_id(TABLE_NAME), COLUMN_NAME, 'IsIdentity')) AS [IDENT], " +
                 @"CHARACTER_MAXIMUM_LENGTH AS CSIZE " +
-                "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + tableName + "' ORDER BY " +
+                "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + tableName + "' AND TABLE_SCHEMA = '" + tschma + "' ORDER BY " +
                 "ORDINAL_POSITION ASC", conn);
             using (SqlDataReader reader = cmd.ExecuteReader())
             {
@@ -1166,28 +1175,49 @@ namespace DbAccess
         private static void CreateForeignKeySchema(SqlConnection conn, TableSchema ts)
         {
             ts.ForeignKeys = new List<ForeignKeySchema>();
-
             SqlCommand cmd = new SqlCommand(
-                @"SELECT " +
-                @"  ColumnName = CU.COLUMN_NAME, " +
-                @"  ForeignTableName  = PK.TABLE_NAME, " +
-                @"  ForeignColumnName = PT.COLUMN_NAME, " +
-                @"  DeleteRule = C.DELETE_RULE, " +
-                @"  IsNullable = COL.IS_NULLABLE " +
-                @"FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS C " +
-                @"INNER JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS FK ON C.CONSTRAINT_NAME = FK.CONSTRAINT_NAME " +
-                @"INNER JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS PK ON C.UNIQUE_CONSTRAINT_NAME = PK.CONSTRAINT_NAME " +
-                @"INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE CU ON C.CONSTRAINT_NAME = CU.CONSTRAINT_NAME " +
-                @"INNER JOIN " +
-                @"  ( " +
-                @"    SELECT i1.TABLE_NAME, i2.COLUMN_NAME " +
-                @"    FROM  INFORMATION_SCHEMA.TABLE_CONSTRAINTS i1 " +
-                @"    INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE i2 ON i1.CONSTRAINT_NAME = i2.CONSTRAINT_NAME " +
-                @"    WHERE i1.CONSTRAINT_TYPE = 'PRIMARY KEY' " +
-                @"  ) " +
-                @"PT ON PT.TABLE_NAME = PK.TABLE_NAME " +
-                @"INNER JOIN INFORMATION_SCHEMA.COLUMNS AS COL ON CU.COLUMN_NAME = COL.COLUMN_NAME AND FK.TABLE_NAME = COL.TABLE_NAME " +
-                @"WHERE FK.Table_NAME='" + ts.TableName + "'", conn);
+                "SELECT " +
+                "  ColumnName = CU.COLUMN_NAME, " +
+                "  ForeignTableName = PK.TABLE_NAME, " +
+                "  ForeignColumnName = PT.COLUMN_NAME, " +
+                "  DeleteRule = C.DELETE_RULE, " +
+                "  IsNullable = COL.IS_NULLABLE " +
+                "FROM " +
+                "  INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS C " +
+                "  INNER JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS FK ON C.CONSTRAINT_NAME = FK.CONSTRAINT_NAME " +
+                "  AND C.CONSTRAINT_CATALOG = FK.CONSTRAINT_CATALOG " +
+                "  AND C.CONSTRAINT_SCHEMA = FK.CONSTRAINT_SCHEMA " +
+                "  INNER JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS PK ON C.UNIQUE_CONSTRAINT_NAME = PK.CONSTRAINT_NAME " +
+                "  AND C.UNIQUE_CONSTRAINT_CATALOG = PK.CONSTRAINT_CATALOG " +
+                "  AND C.UNIQUE_CONSTRAINT_SCHEMA = PK.CONSTRAINT_SCHEMA " +
+                "  INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE CU ON C.CONSTRAINT_NAME = CU.CONSTRAINT_NAME " +
+                "  AND C.CONSTRAINT_CATALOG = CU.CONSTRAINT_CATALOG " +
+                "  and C.CONSTRAINT_SCHEMA = CU.CONSTRAINT_SCHEMA " +
+                "  INNER JOIN (" +
+                "    SELECT " +
+                "      i1.TABLE_NAME, " +
+                "      i1.TABLE_CATALOG, " +
+                "      i1.TABLE_SCHEMA, " +
+                "      i2.COLUMN_NAME " +
+                "    FROM " +
+                "      INFORMATION_SCHEMA.TABLE_CONSTRAINTS i1 " +
+                "      INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE i2 ON i1.CONSTRAINT_NAME = i2.CONSTRAINT_NAME " +
+                "      AND i1.CONSTRAINT_CATALOG = i2.CONSTRAINT_CATALOG " +
+                "      and i1.CONSTRAINT_SCHEMA = i2.CONSTRAINT_SCHEMA " +
+                "    WHERE " +
+                "      i1.CONSTRAINT_TYPE = 'PRIMARY KEY'" +
+                "  ) PT ON PT.TABLE_NAME = PK.TABLE_NAME " +
+                "  AND PT.TABLE_CATALOG = PK.TABLE_CATALOG " +
+                "  AND PT.TABLE_SCHEMA = PK.TABLE_SCHEMA " +
+                "  INNER JOIN INFORMATION_SCHEMA.COLUMNS AS COL ON CU.COLUMN_NAME = COL.COLUMN_NAME " +
+                "  AND CU.TABLE_CATALOG = COL.TABLE_CATALOG " +
+                "  and CU.TABLE_SCHEMA = COL.TABLE_SCHEMA " +
+                "  AND FK.TABLE_NAME = COL.TABLE_NAME " +
+                "  AND FK.TABLE_CATALOG = COL.TABLE_CATALOG " +
+                "  AND FK.TABLE_SCHEMA = COL.TABLE_SCHEMA " +
+                "WHERE " +
+                "  FK.Table_NAME = '" + ts.TableName + "' " +
+                "  and FK.TABLE_SCHEMA = '" + ts.TableSchemaName + "'", conn);
 
             using (SqlDataReader reader = cmd.ExecuteReader())
             {

@@ -99,16 +99,16 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ColumnSchema.cs" />
-    <Compile Include="DatabaseSchema.cs" />
-    <Compile Include="ForeignKeySchema.cs" />
-    <Compile Include="IndexSchema.cs" />
+    <Compile Include="Models\ColumnSchema.cs" />
+    <Compile Include="Models\DatabaseSchema.cs" />
+    <Compile Include="Models\ForeignKeySchema.cs" />
+    <Compile Include="Models\IndexSchema.cs" />
     <Compile Include="SqlServerToSQLite.cs" />
-    <Compile Include="SqlServerType.cs" />
-    <Compile Include="TableSchema.cs" />
+    <Compile Include="Models\SqlServerType.cs" />
+    <Compile Include="Models\TableSchema.cs" />
     <Compile Include="TriggerBuilder.cs" />
-    <Compile Include="TriggerSchema.cs" />
-    <Compile Include="ViewSchema.cs" />
+    <Compile Include="Models\TriggerSchema.cs" />
+    <Compile Include="Models\ViewSchema.cs" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
@@ -141,7 +141,7 @@
   -->
   <ProjectExtensions>
     <VisualStudio>
-      <UserProperties Reset="1" AssemblyVersion="1" AssemblyFileVersion="1" StartDate="20081213" />
+      <UserProperties StartDate="20081213" AssemblyFileVersion="1" AssemblyVersion="1" Reset="1" />
     </VisualStudio>
   </ProjectExtensions>
   <Import Project="..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.113.3\build\net20\Stub.System.Data.SQLite.Core.NetFramework.targets" Condition="Exists('..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.113.3\build\net20\Stub.System.Data.SQLite.Core.NetFramework.targets')" />

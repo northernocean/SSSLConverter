@@ -1,4 +1,4 @@
-﻿namespace DbAccess
+﻿namespace DbAccess.Models
 {
     public class SqlServerType
     {

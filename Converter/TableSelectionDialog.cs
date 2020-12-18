@@ -6,11 +6,12 @@ using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 using DbAccess;
+using DbAccess.Models;
 
 namespace Converter
 {
     /// <summary>
-    /// The dialog allows the user to select which tables to include in the 
+    /// The dialog allows the user to select which tables to include in the
     /// converstion process.
     /// </summary>
     public partial class TableSelectionDialog : Form

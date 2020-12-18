@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using DbAccess.Models;
 
 namespace DbAccess
 {
-    
+
     public static class TriggerBuilder
     {
         public static IList<TriggerSchema> GetForeignKeyTriggers(TableSchema dt)
@@ -36,10 +37,10 @@ namespace DbAccess
 
             string nullString = "";
             if (fks.IsNullable)
-            { 
+            {
                 nullString = " NEW." + fks.ColumnName + " IS NOT NULL AND";
             }
-             
+
             trigger.Body = "SELECT RAISE(ROLLBACK, 'insert on table " + fks.TableName +
                           " violates foreign key constraint " + trigger.Name + "')" +
                           " WHERE" + nullString + " (SELECT " + fks.ForeignColumnName +
@@ -83,7 +84,7 @@ namespace DbAccess
             trigger.Table = fks.ForeignTableName;
 
             string triggerName = trigger.Name;
-            
+
             if (!fks.CascadeOnDelete)
             {
                 trigger.Body = "SELECT RAISE(ROLLBACK, 'delete on table " + fks.ForeignTableName +
@@ -97,7 +98,7 @@ namespace DbAccess
             {
                 trigger.Body = "DELETE FROM [" + fks.TableName + "] WHERE " + fks.ColumnName + " = OLD." +
                                       fks.ForeignColumnName + "; ";
-                              
+
             }
             return trigger;
         }

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace DbAccess
+namespace DbAccess.Models
 {
     /// <summary>
     /// Contains the schema of a single DB column.

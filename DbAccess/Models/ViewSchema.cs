@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace DbAccess
+namespace DbAccess.Models
 {
     /// <summary>
     /// Describes a single view schema
