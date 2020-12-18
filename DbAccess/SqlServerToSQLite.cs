@@ -1,13 +1,13 @@
-﻿using System;
+﻿using log4net;
+using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Data;
 using System.Data.SqlClient;
 using System.Data.SQLite;
-using System.Threading;
-using System.Text.RegularExpressions;
 using System.IO;
-using log4net;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace DbAccess
 {
@@ -89,7 +89,7 @@ namespace DbAccess
         /// <param name="sqlitePath">The path to the generated SQLite database file</param>
         /// <param name="password">The password to use or NULL if no password should be used to encrypt the DB</param>
         /// <param name="handler">A handler to handle progress notifications.</param>
-        /// <param name="selectionHandler">The selection handler which allows the user to select which tables to 
+        /// <param name="selectionHandler">The selection handler which allows the user to select which tables to
         /// convert.</param>
         private static void ConvertSqlServerDatabaseToSQLiteFile(
             string sqlConnString, string sqlitePath, string password, SqlConversionHandler handler,
@@ -793,7 +793,7 @@ namespace DbAccess
         /// </summary>
         /// <param name="connString">The connection string used for reading SQL Server schema.</param>
         /// <param name="handler">A handler for progress notifications.</param>
-        /// <param name="selectionHandler">The selection handler which allows the user to select 
+        /// <param name="selectionHandler">The selection handler which allows the user to select
         /// which tables to convert.</param>
         /// <returns>database schema objects for every table/view in the SQL Server database.</returns>
         private static DatabaseSchema ReadSqlServerSchema(string connString, SqlConversionHandler handler,
@@ -984,6 +984,14 @@ namespace DbAccess
                     {
                         dataType = "text";
                     }
+                    else if(dataType == "hierarchyid")
+                    {
+                        dataType = "blob";
+                    }
+                    else if(dataType == "datetimeoffset")
+                    {
+                        dataType = "datetime";
+                    }
 
                     if (dataType == "bit" || dataType == "int")
                     {
@@ -1102,7 +1110,8 @@ namespace DbAccess
                 dataType == "tinyint" || dataType == "uniqueidentifier" ||
                 dataType == "xml" || dataType == "sql_variant" || dataType == "datetime2" || dataType == "date" || dataType == "time" ||
                 dataType == "decimal" || dataType == "nchar" || dataType == "datetime" ||
-                dataType == SqlServerType.Geography || dataType == SqlServerType.Geometry)
+                dataType == SqlServerType.Geography || dataType == SqlServerType.Geometry ||
+                dataType == "hierarchyid" || dataType == "datetimeoffset")
                 return;
             throw new ApplicationException("Validation failed for data type [" + dataType + "]");
         }
